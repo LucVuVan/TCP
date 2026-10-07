@@ -1,0 +1,568 @@
+* Dạng CharacterStream
+1, 
+import java.io.*;
+import java.net.Socket;
+import java.util.LinkedHashSet;
+ 
+/** Bài 3 - cổng 2208 - BufferedReader / BufferedWriter */
+public class Bai3_CharStream {
+    static final String HOST = "api.ptit.store";
+    static final int PORT = 2208;
+    static final String STUDENT_CODE = "B23DCCN517";
+    static final String Q_CODE = "iy6atec0";          // TODO
+ 
+    public static void main(String[] args) throws Exception {
+        try (Socket socket = new Socket(HOST, PORT)) {
+            socket.setSoTimeout(5000);
+            BufferedReader br = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
+ 
+            bw.write(STUDENT_CODE + ";" + Q_CODE);
+            bw.newLine();
+            bw.flush();
+ 
+            String s = br.readLine();
+            System.out.println("Nhận: " + s);
+ 
+            // Giữ chữ cái, bỏ số + ký tự đặc biệt, bỏ ký tự trùng (giữ lần xuất hiện đầu)
+            LinkedHashSet<Character> set = new LinkedHashSet<>();
+            for (char c : s.toCharArray()) {
+                if (Character.isLetter(c)) set.add(c); // phân biệt hoa/thường
+                // Nếu đề coi 'A' và 'a' là trùng: set.add(Character.toLowerCase(c));
+            }
+            StringBuilder sb = new StringBuilder();
+            for (char c : set) sb.append(c);
+ 
+            System.out.println("Gửi: " + sb);
+            bw.write(sb.toString());
+            bw.newLine();
+            bw.flush();
+        }
+    }
+}
+
+2, 
+import java.io.*;
+import java.net.Socket;
+import java.util.LinkedHashMap;
+import java.util.Map;
+ 
+/** Bài 2 - cổng 2208 - BufferedReader / BufferedWriter: ký tự (chữ/số) xuất hiện > 1 lần */
+public class Bai2_CharStream {
+    static final String HOST = "api.ptit.store";
+    static final int PORT = 2208;
+    static final String STUDENT_CODE = "B23DCCN517";
+    static final String Q_CODE = "XXXXXXXX"; // TODO
+ 
+    public static void main(String[] args) throws Exception {
+        try (Socket socket = new Socket(HOST, PORT)) {
+            socket.setSoTimeout(5000);
+            BufferedReader br = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
+ 
+            bw.write(STUDENT_CODE + ";" + Q_CODE);
+            bw.newLine();
+            bw.flush();
+ 
+            String s = br.readLine();
+            System.out.println("Nhận: " + s);
+ 
+            // Đếm theo thứ tự xuất hiện đầu tiên, phân biệt hoa/thường
+            Map<Character, Integer> count = new LinkedHashMap<>();
+            for (char c : s.toCharArray()) {
+                if (Character.isLetterOrDigit(c)) count.merge(c, 1, Integer::sum);
+            }
+ 
+            // Ví dụ: d:2,O:2,o:2,2:3,
+            StringBuilder sb = new StringBuilder();
+            for (Map.Entry<Character, Integer> e : count.entrySet()) {
+                if (e.getValue() > 1) sb.append(e.getKey()).append(":").append(e.getValue()).append(",");
+            }
+ 
+            System.out.println("Gửi: " + sb);
+            bw.write(sb.toString());
+            bw.newLine();
+            bw.flush();
+        }
+    }
+}
+
+* Dạng ByteStream
+
+1,
+import java.io.*;
+import java.net.Socket;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+ 
+/** Bài 2 - cổng 2206 - InputStream / OutputStream */
+public class Bai2_ByteStream {
+    static final String HOST = "api.ptit.store";
+    static final int PORT = 2206;
+    static final String STUDENT_CODE = "B23DCCN517";
+    static final String Q_CODE = "ODRT6vKA";          // TODO
+ 
+    public static void main(String[] args) throws Exception {
+        try (Socket socket = new Socket(HOST, PORT)) {
+            socket.setSoTimeout(5000);
+            InputStream in = socket.getInputStream();
+            OutputStream out = socket.getOutputStream();
+ 
+            out.write((STUDENT_CODE + ";" + Q_CODE).getBytes(StandardCharsets.UTF_8));
+            out.flush();
+ 
+            byte[] buf = new byte[65536];
+            int n = in.read(buf);
+            while (in.available() > 0) { // đọc nốt phần còn lại nếu có
+                int more = in.read(buf, n, buf.length - n);
+                if (more < 0) break;
+                n += more;
+            }
+            String data = new String(buf, 0, n, StandardCharsets.UTF_8).trim();
+            System.out.println("Nhận: " + data);
+ 
+            List<Integer> even = new ArrayList<>(), odd = new ArrayList<>();
+            for (String s : data.split(",")) {
+                s = s.trim();
+                if (s.isEmpty()) continue;
+                int v = Integer.parseInt(s);
+                if (v % 2 == 0) even.add(v); else odd.add(v);
+            }
+            Collections.sort(even);
+            Collections.sort(odd);
+ 
+            String result = even + ";" + odd; // [2, 4, 6, 8, 10];[1, 3, 7, 15]
+            System.out.println("Gửi: " + result);
+            out.write(result.getBytes(StandardCharsets.UTF_8));
+            out.flush();
+        }
+    }
+}
+
+2, 
+import java.io.*;
+import java.net.Socket;
+import java.nio.charset.StandardCharsets;
+
+/** Bài 3 - cổng 2206 - InputStream / OutputStream: kiểm tra gói hex có checksum */
+public class Bai3_ByteRaw {
+    static final String HOST = "api.ptit.store";
+    static final int PORT = 2206;
+    static final String STUDENT_CODE = "B23DCCN517";
+    static final String Q_CODE = "XXXXXXXX"; // TODO
+
+    public static void main(String[] args) throws Exception {
+        try (Socket socket = new Socket(HOST, PORT)) {
+            socket.setSoTimeout(5000);
+            InputStream in = socket.getInputStream();
+            OutputStream out = socket.getOutputStream();
+
+            out.write((STUDENT_CODE + ";" + Q_CODE).getBytes(StandardCharsets.UTF_8));
+            out.flush();
+
+            byte[] buf = new byte[65536];
+            int n = in.read(buf);
+            while (in.available() > 0) {
+                int more = in.read(buf, n, buf.length - n);
+                if (more < 0) break;
+                n += more;
+            }
+            String data = new String(buf, 0, n, StandardCharsets.UTF_8).trim();
+            System.out.println("Nhận: " + data);
+
+            int valid = 0, payloadBytes = 0;
+            for (String packet : data.split("\\|")) {
+                packet = packet.trim();
+                if (packet.isEmpty()) continue;
+                String[] b = packet.split("-");
+                if (b.length < 2) continue;
+                int sum = 0;
+                for (int i = 0; i < b.length - 1; i++) sum += Integer.parseInt(b[i].trim(), 16);
+                int checksum = Integer.parseInt(b[b.length - 1].trim(), 16);
+                if (sum % 256 == checksum) {
+                    valid++;
+                    payloadBytes += b.length - 1;
+                }
+            }
+
+            String result = "valid=" + valid + ";payloadBytes=" + payloadBytes;
+            System.out.println("Gửi: " + result);
+            out.write(result.getBytes(StandardCharsets.UTF_8));
+            out.flush();
+        }
+    }
+}
+
+* Dạng DataStream 
+1,
+import java.io.*;
+import java.net.Socket;
+
+/** Bài 4 - cổng 2207 - DataInputStream / DataOutputStream */
+public class Bai4_DataStream {
+    static final String HOST = "api.ptit.store";
+    static final int PORT = 2207;
+    static final String STUDENT_CODE = "B23DCCN517";
+    static final String Q_CODE = "KJZLOWOA";          // TODO
+
+    public static void main(String[] args) throws Exception {
+        try (Socket socket = new Socket(HOST, PORT)) {
+            socket.setSoTimeout(5000);
+            DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
+            DataInputStream dis = new DataInputStream(socket.getInputStream());
+
+            dos.writeUTF(STUDENT_CODE + ";" + Q_CODE);
+            dos.flush();
+
+            int n = dis.readInt();
+            long min = Long.MAX_VALUE, max = Long.MIN_VALUE, sum = 0;
+            for (int i = 0; i < n; i++) {
+                int v = dis.readInt();
+                min = Math.min(min, v);
+                max = Math.max(max, v);
+                sum += v;
+            }
+
+            String result = min + ";" + max + ";" + sum;
+            System.out.println("Gửi: " + result);
+            dos.writeUTF(result);
+            dos.flush();
+        }
+    }
+}
+
+2, 
+import java.io.*;
+import java.net.Socket;
+
+/** Bài 1 - cổng 2207 - DataInputStream / DataOutputStream: đổi số sang nhị phân và hex */
+public class Bai1_DataStream {
+    static final String HOST = "api.ptit.store";
+    static final int PORT = 2207;
+    static final String STUDENT_CODE = "B23DCCN517";
+    static final String Q_CODE = "XXXXXXXX"; // TODO: mã câu hỏi (hiện trên giao diện đề)
+
+    public static void main(String[] args) throws Exception {
+        try (Socket socket = new Socket(HOST, PORT)) {
+            socket.setSoTimeout(5000);
+            DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
+            DataInputStream dis = new DataInputStream(socket.getInputStream());
+
+            dos.writeUTF(STUDENT_CODE + ";" + Q_CODE);
+            dos.flush();
+
+            int n = dis.readInt();
+            System.out.println("Nhận: " + n);
+
+            // 15226 -> 11101101111010;3B7A
+            String result = Integer.toBinaryString(n) + ";" + Integer.toHexString(n).toUpperCase();
+            System.out.println("Gửi: " + result);
+            dos.writeUTF(result);
+            dos.flush();
+        }
+    }
+}
+
+* Dạng ObjectStream:
+1, CustomerClient
+package TCP;
+ 
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
+import java.net.Socket;
+ 
+/** Lớp Customer viết ngay trong file này, tên đầy đủ vẫn là TCP.Customer (khớp với server). */
+class Customer implements Serializable {
+    private static final long serialVersionUID = 20170711L;
+ 
+    int id;
+    String code;
+    String name;
+    String dayOfBirth;
+    String userName;
+ 
+    public Customer(int id, String code, String name, String dayOfBirth, String userName) {
+        this.id = id;
+        this.code = code;
+        this.name = name;
+        this.dayOfBirth = dayOfBirth;
+        this.userName = userName;
+    }
+ 
+    @Override
+    public String toString() {
+        return id + " | " + code + " | " + name + " | " + dayOfBirth + " | " + userName;
+    }
+}
+ 
+/** Bài 1 - cổng 2209 - ObjectInputStream / ObjectOutputStream */
+public class Bai1_CustomerClient {
+    static final String HOST = "api.ptit.store";
+    static final int PORT = 2209;
+    static final String STUDENT_CODE = "B23DCCN517";
+    static final String Q_CODE = "F2DA54F3"; // TODO: đổi thành mã câu hỏi của bạn
+ 
+    public static void main(String[] args) throws Exception {
+        try (Socket socket = new Socket(HOST, PORT)) {
+            socket.setSoTimeout(5000);
+            ObjectOutputStream oos = new ObjectOutputStream(socket.getOutputStream());
+            oos.flush();
+            ObjectInputStream ois = new ObjectInputStream(socket.getInputStream());
+ 
+            // 1) Gửi studentCode;qCode
+            oos.writeObject(STUDENT_CODE + ";" + Q_CODE);
+            oos.flush();
+ 
+            // 2) Nhận Customer
+            Customer c = (Customer) ois.readObject();
+            System.out.println("Nhận: " + c);
+ 
+            // 3) Chuẩn hóa
+            String[] p = c.name.trim().toLowerCase().split("\\s+");
+            c.name = normalizeName(p);
+            c.dayOfBirth = normalizeDob(c.dayOfBirth);
+            c.userName = makeUserName(p);
+ 
+            oos.writeObject(c);
+            oos.flush();
+            System.out.println("Gửi: " + c);
+            // 4) Đóng socket (try-with-resources)
+        }
+    }
+ 
+    // nguyen van hai duong -> DUONG, Nguyen Van Hai
+    static String normalizeName(String[] p) {
+        StringBuilder sb = new StringBuilder(p[p.length - 1].toUpperCase()).append(",");
+        for (int i = 0; i < p.length - 1; i++) {
+            sb.append(" ").append(Character.toUpperCase(p[i].charAt(0))).append(p[i].substring(1));
+        }
+        return sb.toString();
+    }
+ 
+    // mm-dd-yyyy -> dd/mm/yyyy
+    static String normalizeDob(String d) {
+        String[] x = d.trim().split("-");
+        return x[1] + "/" + x[0] + "/" + x[2];
+    }
+ 
+    // nguyen van hai duong -> nvhduong
+    static String makeUserName(String[] p) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < p.length - 1; i++) sb.append(p[i].charAt(0));
+        return sb.append(p[p.length - 1]).toString();
+    }
+}
+
+2, TCPStudent
+package TCP;
+ 
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
+import java.net.Socket;
+ 
+/**
+ * Lớp Student viết ngay trong file này (tên đầy đủ vẫn là TCP.Student).
+ * LƯU Ý: serialVersionUID và kiểu các trường PHẢI giống hệt lớp Student của server,
+ * hãy đối chiếu với đoạn code mẫu của đề rồi sửa lại nếu khác.
+ */
+class Student implements Serializable {
+    private static final long serialVersionUID = 20171107L; // TODO: khớp với đề
+ 
+    int id;
+    String code;
+    double gpa;          // TODO: nếu đề dùng float thì đổi thành float
+    String gpaLetter;
+ 
+    public Student(int id, String code, double gpa, String gpaLetter) {
+        this.id = id;
+        this.code = code;
+        this.gpa = gpa;
+        this.gpaLetter = gpaLetter;
+    }
+ 
+    @Override
+    public String toString() {
+        return "id=" + id + ";code=" + code + ";gpa=" + gpa + ";gpaLetter=" + gpaLetter;
+    }
+}
+ 
+/** Bài 4 - cổng 2209 - ObjectInputStream / ObjectOutputStream */
+public class Bai4_ObjectStream {
+    static final String HOST = "api.ptit.store";
+    static final int PORT = 2209;
+    static final String STUDENT_CODE = "B23DCCN517";
+    static final String Q_CODE = "XXXXXXXX"; // TODO
+ 
+    public static void main(String[] args) throws Exception {
+        try (Socket socket = new Socket(HOST, PORT)) {
+            socket.setSoTimeout(5000);
+            ObjectOutputStream oos = new ObjectOutputStream(socket.getOutputStream());
+            oos.flush();
+            ObjectInputStream ois = new ObjectInputStream(socket.getInputStream());
+ 
+            oos.writeObject(STUDENT_CODE + ";" + Q_CODE);
+            oos.flush();
+ 
+            Student s = (Student) ois.readObject();
+            System.out.println("Nhận: " + s);
+ 
+            s.code = s.code.toUpperCase();
+            s.gpaLetter = letter(s.gpa);
+ 
+            oos.writeObject(s);
+            oos.flush();
+            System.out.println("Gửi: " + s);
+        }
+    }
+ 
+    static String letter(double g) {
+        if (g >= 3.6) return "A";
+        if (g >= 3.2) return "B";
+        if (g >= 2.5) return "C";
+        if (g >= 2.0) return "D";
+        return "F";
+    }
+}
+
+* Dạng NIO 
+
+1, 
+import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.channels.SocketChannel;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+
+/** Bài 5 - cổng 2211 - SocketChannel + ByteBuffer, frame = 4 byte độ dài (big-endian) + payload UTF-8 */
+public class Bai5_SocketChannel {
+    static final String HOST = "api.ptit.store";
+    static final int PORT = 2211;
+    static final String STUDENT_CODE = "B23DCCN517";
+    static final String Q_CODE = "IaQnaHEr";          // TODO
+
+    public static void main(String[] args) throws Exception {
+        try (SocketChannel ch = SocketChannel.open(new InetSocketAddress(HOST, PORT))) {
+            ch.socket().setSoTimeout(5000);
+
+            sendFrame(ch, STUDENT_CODE + ";" + Q_CODE);
+
+            List<Integer> ok = new ArrayList<>(), fail = new ArrayList<>(), retry = new ArrayList<>();
+            for (int f = 0; f < 2; f++) {
+                String frame = readFrame(ch);
+                System.out.println("Frame " + (f + 1) + ": " + frame);
+                for (String rec : frame.split("\\|")) {
+                    rec = rec.trim();
+                    if (rec.isEmpty()) continue;
+                    String[] p = rec.split(",");   // id,operation,status
+                    int id = Integer.parseInt(p[0].trim());
+                    switch (p[2].trim().toUpperCase()) {
+                        case "OK":    ok.add(id); break;
+                        case "FAIL":  fail.add(id); break;
+                        case "RETRY": retry.add(id); break;
+                    }
+                }
+            }
+
+            String result = "OK=" + join(ok) + ";FAIL=" + join(fail) + ";RETRY=" + join(retry);
+            System.out.println("Gửi: " + result);
+            sendFrame(ch, result);
+        }
+    }
+
+    static String join(List<Integer> l) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < l.size(); i++) {
+            if (i > 0) sb.append(",");
+            sb.append(l.get(i));
+        }
+        return sb.toString();
+    }
+
+    static void sendFrame(SocketChannel ch, String payload) throws Exception {
+        byte[] data = payload.getBytes(StandardCharsets.UTF_8);
+        ByteBuffer bb = ByteBuffer.allocate(4 + data.length).order(ByteOrder.BIG_ENDIAN);
+        bb.putInt(data.length).put(data);
+        bb.flip();
+        while (bb.hasRemaining()) ch.write(bb);
+    }
+
+    static String readFrame(SocketChannel ch) throws Exception {
+        ByteBuffer lenBuf = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN);
+        readFully(ch, lenBuf);
+        int len = lenBuf.getInt();
+        ByteBuffer body = ByteBuffer.allocate(len);
+        readFully(ch, body);
+        return new String(body.array(), StandardCharsets.UTF_8);
+    }
+
+    static void readFully(SocketChannel ch, ByteBuffer bb) throws Exception {
+        while (bb.hasRemaining()) {
+            if (ch.read(bb) < 0) throw new java.io.EOFException("Server đóng kết nối sớm");
+        }
+        bb.flip();
+    }
+}
+
+2,
+import java.io.EOFException;
+import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.channels.SocketChannel;
+import java.nio.charset.StandardCharsets;
+
+/** Bài 5 - cổng 2211 - SocketChannel/ByteBuffer: nối 3 frame, tính len và checksum */
+public class Bai5_NIO {
+    static final String HOST = "api.ptit.store";
+    static final int PORT = 2211;
+    static final String STUDENT_CODE = "B23DCCN517";
+    static final String Q_CODE = "XXXXXXXX"; // TODO
+
+    public static void main(String[] args) throws Exception {
+        try (SocketChannel ch = SocketChannel.open(new InetSocketAddress(HOST, PORT))) {
+            ch.socket().setSoTimeout(5000);
+
+            sendFrame(ch, STUDENT_CODE + ";" + Q_CODE);
+
+            StringBuilder all = new StringBuilder();
+            for (int i = 0; i < 3; i++) {
+                String f = readFrame(ch);
+                System.out.println("Frame " + (i + 1) + ": " + f);
+                all.append(f);
+            }
+
+            long sum = 0;
+            for (int i = 0; i < all.length(); i++) sum += all.charAt(i);
+
+            String result = "len=" + all.length() + ";checksum=" + (sum % 100000);
+            System.out.println("Gửi: " + result);
+            sendFrame(ch, result);
+        }
+    }
+
+    static void sendFrame(SocketChannel ch, String payload) throws Exception {
+        byte[] data = payload.getBytes(StandardCharsets.UTF_8);
+        ByteBuffer bb = ByteBuffer.allocate(4 + data.length).order(ByteOrder.BIG_ENDIAN);
+        bb.putInt(data.length).put(data);
+        bb.flip();
+        while (bb.hasRemaining()) ch.write(bb);
+    }
+
+    static String readFrame(SocketChannel ch) throws Exception {
+        ByteBuffer lenBuf = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN);
+        readFully(ch, lenBuf);
+        ByteBuffer body = ByteBuffer.allocate(lenBuf.getInt());
+        readFully(ch, body);
+        return new String(body.array(), StandardCharsets.UTF_8);
+    }
+
+    static void readFully(SocketChannel ch, ByteBuffer bb) throws Exception {
+        while (bb.hasRemaining()) {
+            if (ch.read(bb) < 0) throw new EOFException("Server đóng kết nối sớm");
+        }
+        bb.flip();
+    }
+}
